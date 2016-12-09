@@ -100,7 +100,13 @@ ItemUsePtrTable:
 	dw ItemUsePPRestore  ; ELIXER
 	dw ItemUsePPRestore  ; MAX_ELIXER
 
-ItemUseBall:
+ItemUseBall: ; d687 (3:5687)
+; Balls can only be used if this is your first wild battle here
+	ld b, 2
+	call CaughtFlagAction
+	ld a, c
+	and a
+	jp nz, ItemUseNotTime
 
 ; Balls can't be used out of battle.
 	ld a,[wIsInBattle]
@@ -1380,14 +1386,15 @@ ItemUseMedicine:
 	sbc b
 	ld b,a ; bc = the amount of max HP gained from leveling up
 ; add the amount gained to the current HP
-	ld de,(wPartyMon1HP + 1) - wPartyMon1MaxHP
-	add hl,de ; hl now points to LSB of current HP
-	ld a,[hl]
-	add c
-	ld [hld],a
-	ld a,[hl]
-	adc b
-	ld [hl],a
+;	ld de,(wPartyMon1HP + 1) - wPartyMon1MaxHP
+;	add hl,de ; hl now points to LSB of current HP
+;	ld a,[hl]
+;	add c
+;	ld [hld],a
+;	ld a,[hl]
+;	adc b
+;	ld [hl],a
+; display the rare candy message
 	ld a,RARE_CANDY_MSG
 	ld [wPartyMenuTypeOrMessageID],a
 	call RedrawPartyMenu

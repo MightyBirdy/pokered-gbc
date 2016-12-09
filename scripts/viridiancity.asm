@@ -1,4 +1,8 @@
 ViridianCityScript:
+	CheckEvent EVENT_GOT_POKEDEX
+	jr z, .next
+	SetEvent EVENT_CAN_BUY_BALLS
+.next
 	call EnableAutoTextBoxDrawing
 	ld hl, ViridianCityScriptPointers
 	ld a, [wViridianCityCurScript]

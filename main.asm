@@ -20,6 +20,11 @@ SECTION "bank1",ROMX,BANK[$1]
 INCLUDE "data/facing.asm"
 
 ResetStatusAndHalveMoneyOnBlackout::
+
+;When the player blacks out we actually reset the game
+;they never hit the rest of this function
+	jp SoftReset
+
 ; Reset player status on blackout.
 	xor a
 	ld [wBattleResult], a
@@ -1861,7 +1866,8 @@ PokemonMenuEntries:
 	next "SWITCH"
 	next "CANCEL@"
 
-GetMonFieldMoves:
+;1:77C4 as of writing
+GetMonFieldMoves: ; 77d6 (1:77d6)
 	ld a, [wWhichPokemon]
 	ld hl, wPartyMon1Moves
 	ld bc, wPartyMon2 - wPartyMon1
@@ -1870,6 +1876,32 @@ GetMonFieldMoves:
 	ld e, l
 	ld c, NUM_MOVES + 1
 	ld hl, wFieldMoves
+;here we work our magic to stop field moves for dead
+;monsters. save state so we can do stuff
+	push hl
+	push de
+;calc hl to a pointer to the current HP
+	ld hl, wPartyMon1Moves - wPartyMon1HP
+	ld a, e
+	sub l
+	ld e, a
+;this actually is not tested, there's no opportunity
+;if wRAM is ever shifted, test this!!!
+	jr nc, .checkIf0
+	dec d
+.checkIf0
+;check if 0
+	ld a, [de]
+	ld l, a
+	inc de
+	ld a, [de]
+	or l
+	jr nz, .pkmnAlive
+	ld c, 1
+.pkmnAlive
+	pop de
+	pop hl
+;end hackery
 .loop
 	push hl
 .nextMove
@@ -4220,9 +4252,142 @@ FlagAction:
 	ld c, a
 	ret
 
+; for end of battle
+; set to write and then fall through
+CaughtFlagWrite:
+	ld b, 1
+
+; A wrapper for FlagAction that takes only a parameter in b
+; Operates on wCaughtFlags and wCurMap
+; returns result in a
+CaughtFlagAction:
+	push hl
+	ld hl, wCurMap
+	ld a, [hl]
+	cp 37
+	jr nc, .otherMaps ;if > 36, it is one of the other maps
+	and $07
+	ld c, a
+; c now contains the bit
+	ld a, [hl]
+	srl a
+	srl a
+	srl a
+; a now contains the byte offset
+	EventFlagAddress hl, EVENT_CAUGHT_FLAGS_START
+	add a, l
+	ld l, a
+	ld a, h
+	adc a, 0
+	ld h, a
+; hl is now event_flags + CAUGHT_FLAGS_START offset + a (byte offset)
+; c is still the bit
+; b is the task
+	jp .callFlagAction
+.otherMaps
+; start with the 2nd to last byte
+; we have 3 more we can pack in here
+	EventFlagAddress hl, EVENT_CAUGHT_FLAGS_START
+	ld a, l
+	add a, 4
+	ld l, a
+	ld a, h
+	adc a, 0
+	ld h, a
+	ld a, [wCurMap]
+;Viridian Forest
+	ld c, 5
+	cp a, 51
+	jr z, .callFlagAction
+;Power Plant
+	inc c
+	cp a, 83
+	jr z, .callFlagAction
+;Diglett Cave
+	inc c
+	cp a, 198
+	jr z, .callFlagAction
+; next group
+	inc hl
+	ld c, 0
+; Mt Moon 59,60,61
+	cp a, 59
+	jr c, .notMtMoon
+	cp a, 62
+	jr nc, .notMtMoon
+	jr .callFlagAction
+.notMtMoon
+;Victory Road 108,194,198
+	inc c
+	cp a, 108
+	jr z, .callFlagAction
+	cp a, 194
+	jr z, .callFlagAction
+	cp a, 198
+	jr z, .callFlagAction
+;Rock Tunnel 82,232
+	inc c
+	cp a, 82
+	jr z, .callFlagAction
+	cp a, 232
+	jr z, .callFlagAction
+;Unkown Dungeon 226, 227, 228
+	inc c
+	cp a, 226
+	jr c, .notUnkownDungeon
+	cp a, 229
+	jr nc, .notUnkownDungeon
+	jr .callFlagAction
+.notUnkownDungeon
+;Pokemon Tower 141-148
+	inc c
+	cp a, 141
+	jr c, .notPokemonTower
+	cp a, 149
+	jr nc, .notPokemonTower
+	jr .callFlagAction
+.notPokemonTower
+;Safari Zone 217-220
+	inc c
+	cp a, 217
+	jr c, .notSafariZone
+	cp a, 221
+	jr nc, .notSafariZone
+	jr .callFlagAction
+.notSafariZone
+;Seafoam Islands 159-162,192
+	inc c
+	cp a, 192
+	jr z, .callFlagAction
+	cp a, 159
+	jr c, .notSeafoamIslandsDungeon
+	cp a, 163
+	jr nc, .notSeafoamIslandsDungeon
+	jr .callFlagAction
+.notSeafoamIslandsDungeon
+;Cinnabar Mansion 165,214-216
+	inc c
+	cp a, 165
+	jr z, .callFlagAction
+	cp a, 214
+	jr c, .notCinnabarMansion
+	cp a, 217
+	jr nc, .notCinnabarMansion
+	jr .callFlagAction
+.notCinnabarMansion
+;it isn't in our whitelist, just say no
+	ld c, 0
+	jr .dontCallFlagAction
+.callFlagAction
+	call FlagAction ;hl is the byte in question, c is the bit, let's go!
+.dontCallFlagAction
+	pop hl
+	ret
 
 HealParty:
 ; Restore HP and PP.
+; Except this is Nuzlocke, and we don't heal pussy
+; ass fainted pokemon at Pokemon Centers!
 
 	ld hl, wPartySpecies
 	ld de, wPartyMon1HP
@@ -4283,6 +4448,16 @@ HealParty:
 	jr nz, .pp
 	pop de
 
+;if both bytes of current HP are 0
+;we skip to after the healing portion
+	ld a, [de]
+	inc de
+	ld h, a
+	ld a, [de]
+	dec de
+	or h
+	jr z, .postheal
+
 	ld hl, wPartyMon1MaxHP - wPartyMon1HP
 	add hl, de
 	ld a, [hli]
@@ -4291,6 +4466,7 @@ HealParty:
 	ld a, [hl]
 	ld [de], a
 
+.postheal
 	pop de
 	pop hl
 
@@ -6602,7 +6778,7 @@ Plateau_GFX:       INCBIN "gfx/tilesets/plateau.t10.2bpp"
 Plateau_Block:     INCBIN "gfx/blocksets/plateau.bst"
 
 
-SECTION "bank1A",ROMX,BANK[$1A]
+SECTION "bank1A",ROMX,BANK[$1A] 36
 
 INCLUDE "engine/battle/decrement_pp.asm"
 

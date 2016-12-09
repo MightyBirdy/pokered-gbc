@@ -1,4 +1,16 @@
 EndOfBattle:
+; There's an event system. That's more like it!
+	CheckEvent EVENT_CAN_BUY_BALLS
+	jr z, .noWriteCaughtFlag
+; if wild battle
+	ld a, [wIsInBattle]
+	cp 1
+	jr nz, .noWriteCaughtFlag
+; write the flag for this area
+	ld b, 3
+	ld hl, CaughtFlagWrite
+	call Bankswitch
+.noWriteCaughtFlag
 	ld a, [wLinkState]
 	cp LINK_STATE_BATTLING
 	jr nz, .notLinkBattle

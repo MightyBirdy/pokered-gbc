@@ -3222,6 +3222,9 @@ wBoxMonNicksEnd:: ; dee2
 
 wBoxDataEnd::
 
+; Declare six bytes of caught flags
+wCaughtFlags:: ds 6
+
 IF GEN_2_GRAPHICS
 wEXPBarPixelLength::  ds 1
 wEXPBarBaseEXP::      ds 3
