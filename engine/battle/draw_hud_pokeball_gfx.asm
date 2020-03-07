@@ -10,7 +10,7 @@ DrawEnemyPokeballs:
 	call LoadPartyPokeballGfx
 	jp SetupEnemyPartyPokeballs
 
-LoadPartyPokeballGfx:
+LoadPartyPokeballGfx_orig: ; Name changed so color hack can hijack this
 	ld de, PokeballTileGraphics
 	ld hl, vSprites + $310
 	lb bc, BANK(PokeballTileGraphics), (PokeballTileGraphicsEnd - PokeballTileGraphics) / $10
@@ -196,7 +196,7 @@ SetupPlayerAndEnemyPokeballs:
 	ld hl, wOAMBuffer + $18
 	jp WritePokeballOAMData
 
-; four tiles: pokeball, black pokeball (status ailment), crossed out pokeball (faited) and pokeball slot (no mon)
+; four tiles: pokeball, black pokeball (status ailment), crossed out pokeball (fainted) and pokeball slot (no mon)
 PokeballTileGraphics::
 	INCBIN "gfx/pokeball.2bpp"
 PokeballTileGraphicsEnd:

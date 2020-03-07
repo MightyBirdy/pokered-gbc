@@ -1,3 +1,3 @@
-SFX_Cymbal3_1_Ch1:
-	unknownnoise0x20 0, 162, 80
+SFX_Cymbal3_1_Ch7:
+	noisenote 0, 10, 2, 80
 	endchannel

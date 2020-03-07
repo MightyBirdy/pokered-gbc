@@ -1,34 +1,27 @@
-
-AUDIO_1 EQU $2
-AUDIO_2 EQU $8
-AUDIO_3 EQU $1f
-
 INCLUDE "constants.asm"
 
 
-SECTION "Sound Effect Headers 1", ROMX, BANK[AUDIO_1]
+SECTION "Sound Effect Headers 1", ROMX ; BANK $02
 INCLUDE "audio/headers/sfxheaders1.asm"
 
-SECTION "Sound Effect Headers 2", ROMX, BANK[AUDIO_2]
+SECTION "Sound Effect Headers 2", ROMX ; BANK $08
 INCLUDE "audio/headers/sfxheaders2.asm"
 
-SECTION "Sound Effect Headers 3", ROMX, BANK[AUDIO_3]
+SECTION "Sound Effect Headers 3", ROMX ; BANK $1f
 INCLUDE "audio/headers/sfxheaders3.asm"
 
 
-
-SECTION "Music Headers 1", ROMX, BANK[AUDIO_1]
+SECTION "Music Headers 1", ROMX ; BANK $02
 INCLUDE "audio/headers/musicheaders1.asm"
 
-SECTION "Music Headers 2", ROMX, BANK[AUDIO_2]
+SECTION "Music Headers 2", ROMX ; BANK $08
 INCLUDE "audio/headers/musicheaders2.asm"
 
-SECTION "Music Headers 3", ROMX, BANK[AUDIO_3]
+SECTION "Music Headers 3", ROMX ; BANK $1f
 INCLUDE "audio/headers/musicheaders3.asm"
 
 
-
-SECTION "Sound Effects 1", ROMX, BANK[AUDIO_1]
+SECTION "Sound Effects 1", ROMX ; BANK $02
 
 INCLUDE "audio/sfx/snare1_1.asm"
 INCLUDE "audio/sfx/snare2_1.asm"
@@ -127,7 +120,7 @@ INCLUDE "audio/sfx/cry21_1.asm"
 INCLUDE "audio/sfx/cry22_1.asm"
 
 
-SECTION "Sound Effects 2", ROMX, BANK[AUDIO_2]
+SECTION "Sound Effects 2", ROMX ; BANK $08
 
 INCLUDE "audio/sfx/snare1_2.asm"
 INCLUDE "audio/sfx/snare2_2.asm"
@@ -162,7 +155,7 @@ INCLUDE "audio/sfx/ball_poof.asm"
 INCLUDE "audio/sfx/faint_thud.asm"
 INCLUDE "audio/sfx/run.asm"
 INCLUDE "audio/sfx/dex_page_added.asm"
-INCLUDE "audio/sfx/pokeflute_ch3.asm"
+INCLUDE "audio/sfx/pokeflute_ch6.asm"
 INCLUDE "audio/sfx/peck.asm"
 INCLUDE "audio/sfx/faint_fall.asm"
 INCLUDE "audio/sfx/battle_09.asm"
@@ -252,7 +245,7 @@ INCLUDE "audio/sfx/cry21_2.asm"
 INCLUDE "audio/sfx/cry22_2.asm"
 
 
-SECTION "Sound Effects 3", ROMX, BANK[AUDIO_3]
+SECTION "Sound Effects 3", ROMX ; BANK $1f
 
 INCLUDE "audio/sfx/snare1_3.asm"
 INCLUDE "audio/sfx/snare2_3.asm"
@@ -360,7 +353,7 @@ INCLUDE "audio/sfx/cry22_3.asm"
 
 
 
-SECTION "Audio Engine 1", ROMX, BANK[AUDIO_1]
+SECTION "Audio Engine 1", ROMX ; BANK $02
 
 PlayBattleMusic::
 	xor a
@@ -453,7 +446,7 @@ Music_Cities1AlternateTempo::
 	jp Audio1_OverwriteChannelPointer
 
 
-SECTION "Audio Engine 2", ROMX, BANK[AUDIO_2]
+SECTION "Audio Engine 2", ROMX ; BANK $08
 
 Music_DoLowHealthAlarm::
 	ld a, [wLowHealthAlarm]
@@ -477,7 +470,7 @@ Music_DoLowHealthAlarm::
 
 .asm_2138a
 	ld a, $86
-	ld [wChannelSoundIDs + CH4], a ;disable sound channel?
+	ld [wChannelSoundIDs + Ch4], a ;disable sound channel?
 	ld a, [wLowHealthAlarm]
 	and $7f ;decrement alarm timer.
 	dec a
@@ -491,7 +484,7 @@ Music_DoLowHealthAlarm::
 .disableAlarm
 	xor a
 	ld [wLowHealthAlarm], a  ;disable alarm
-	ld [wChannelSoundIDs + CH4], a  ;re-enable sound channel?
+	ld [wChannelSoundIDs + Ch4], a  ;re-enable sound channel?
 	ld de, .toneDataSilence
 	jr .playTone
 
@@ -541,13 +534,13 @@ Music_PokeFluteInBattle::
 	; begin playing the "caught mon" sound effect
 	ld a, SFX_CAUGHT_MON
 	call PlaySoundWaitForCurrent
-	; then immediately overwrtie the channel pointers
-	ld hl, wChannelCommandPointers + CH4 * 2
-	ld de, SFX_08_PokeFlute_Ch1
+	; then immediately overwrite the channel pointers
+	ld hl, wChannelCommandPointers + Ch4 * 2
+	ld de, SFX_08_PokeFlute_Ch4
 	call Audio2_OverwriteChannelPointer
-	ld de, SFX_08_PokeFlute_Ch2
+	ld de, SFX_08_PokeFlute_Ch5
 	call Audio2_OverwriteChannelPointer
-	ld de, SFX_08_PokeFlute_Ch3
+	ld de, SFX_08_PokeFlute_Ch6
 
 Audio2_OverwriteChannelPointer:
 	ld a, e
@@ -557,7 +550,7 @@ Audio2_OverwriteChannelPointer:
 	ret
 
 
-SECTION "Audio Engine 3", ROMX, BANK[AUDIO_3]
+SECTION "Audio Engine 3", ROMX ; BANK $1f
 
 PlayPokedexRatingSfx::
 	ld a, [$ffdc]
@@ -601,7 +594,7 @@ INCLUDE "audio/engine_3.asm"
 
 
 
-SECTION "Music 1", ROMX, BANK[AUDIO_1]
+SECTION "Music 1", ROMX ; BANK $02
 
 INCLUDE "audio/music/pkmnhealed.asm"
 INCLUDE "audio/music/routes1.asm"
@@ -630,9 +623,9 @@ INCLUDE "audio/music/gym.asm"
 INCLUDE "audio/music/pokecenter.asm"
 
 
-SECTION "Music 2", ROMX, BANK[AUDIO_2]
+SECTION "Music 2", ROMX ; BANK $08
 
-INCLUDE "audio/sfx/pokeflute_ch1_ch2.asm"
+INCLUDE "audio/sfx/pokeflute_ch4_ch5.asm"
 INCLUDE "audio/sfx/unused2_2.asm"
 INCLUDE "audio/music/gymleaderbattle.asm"
 INCLUDE "audio/music/trainerbattle.asm"
@@ -646,7 +639,7 @@ INCLUDE "audio/music/defeatedwildmon.asm"
 INCLUDE "audio/music/defeatedgymleader.asm"
 
 
-SECTION "Music 3", ROMX, BANK[AUDIO_3]
+SECTION "Music 3", ROMX ; BANK $1f
 
 INCLUDE "audio/music/bikeriding.asm"
 INCLUDE "audio/music/dungeon1.asm"

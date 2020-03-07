@@ -8,7 +8,7 @@ AnimateBoulderDust:
 	ld a, %11100100
 	ld [rOBP1], a
 	call LoadSmokeTileFourTimes
-	callba WriteCutOrBoulderDustAnimationOAMBlock
+	callba WriteBoulderDustAnimationOAMBlock
 	ld c, 8 ; number of steps in animation
 .loop
 	push bc
@@ -16,7 +16,7 @@ AnimateBoulderDust:
 	ld bc, .returnAddress
 	push bc
 	ld c, 4
-	jp [hl]
+	jp hl
 .returnAddress
 	ld a, [rOBP1]
 	xor %01100100

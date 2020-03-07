@@ -1,3 +1,3 @@
-SFX_Snare9_2_Ch1:
-	unknownnoise0x20 0, 130, 38
+SFX_Snare9_2_Ch7:
+	noisenote 0, 8, 2, 38
 	endchannel

@@ -1,4 +1,4 @@
-SFX_Triangle2_1_Ch1:
-	unknownnoise0x20 1, 65, 43
-	unknownnoise0x20 0, 97, 42
+SFX_Triangle2_1_Ch7:
+	noisenote 1, 4, 1, 43
+	noisenote 0, 6, 1, 42
 	endchannel

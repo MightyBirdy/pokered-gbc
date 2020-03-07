@@ -10,27 +10,27 @@ GetRowColAddressBgMap::
 	srl h
 	rr a
 	or l
-	ld l,a
-	ld a,b
+	ld l, a
+	ld a, b
 	or h
-	ld h,a
+	ld h, a
 	ret
 
 ; clears a VRAM background map with blank space tiles
 ; INPUT: h - high byte of background tile map address in VRAM
 ClearBgMap::
-	ld a," "
+	ld a, " "
 	jr .next
-	ld a,l
+	ld a, l
 .next
-	ld de,$400 ; size of VRAM background map
-	ld l,e
+	ld de, $400 ; size of VRAM background map
+	ld l, e
 .loop
-	ld [hli],a
+	ld [hli], a
 	dec e
-	jr nz,.loop
+	jr nz, .loop
 	dec d
-	jr nz,.loop
+	jr nz, .loop
 	ret
 
 ; This function redraws a BG row of height 2 or a BG column of width 2.
@@ -41,52 +41,35 @@ ClearBgMap::
 ; when necessary. It is also used in trade animation and elevator code.
 ; This function has beex HAXed to call other functions, which will also refresh palettes.
 RedrawRowOrColumn::
-	ld a,[hRedrawRowOrColumnMode]
+	ld a, [hRedrawRowOrColumnMode]
 	and a
 	ret z
-	ld b,a
+	ld b, a
 	xor a
-	ld [hRedrawRowOrColumnMode],a
+	ld [hRedrawRowOrColumnMode], a
 	dec b
-	jr nz,.redrawRow
+	jr nz, .redrawRow
 	CALL_INDIRECT DrawMapColumn
 	ret
 .redrawRow
 	CALL_INDIRECT DrawMapRow
 	ret
 
-SECTION "AutoBgMapTransfer", ROM0[$1d57]
-
 ; This function automatically transfers tile number data from the tile map at
-; C3A0 to VRAM during V-blank. Note that it only transfers one third of the
+; wTileMap to VRAM during V-blank. Note that it only transfers one third of the
 ; background per V-blank. It cycles through which third it draws.
 ; This transfer is turned off when walking around the map, but is turned
 ; on when talking to sprites, battling, using menus, etc. This is because
 ; the above function, RedrawRowOrColumn, is used when walking to
 ; improve efficiency.
 AutoBgMapTransfer: ; HAXED function
-	ld a,BANK(RefreshWindow)
-	ld [MBC1RomBank],a
+	ld a, BANK(RefreshWindow)
+	ld [MBC1RomBank], a
 	call RefreshWindow
-	ld a,[H_LOADEDROMBANK]
-	ld [MBC1RomBank],a
+	ld a, [H_LOADEDROMBANK]
+	ld [MBC1RomBank], a
 	ret
 
-; More HAX functions
-
-_RefreshWindowInitial: ; 1d65
-	ld a,BANK(RefreshWindowInitial)
-	ld [$2000],a
-	jp RefreshWindowInitial
-
-HaxFunc3: ; 1d6d
-	ld a,[H_LOADEDROMBANK]
-	ld [$2000],a
-	ret
-
-; HAX: This function is reimplemented.
-;TransferBgRows:: ; 1d9e (0:1d9e)
-; unrolled loop and using pop for speed
 
 ; HAX: Squeeze this little function in here
 _GbcPrepareVBlank:
@@ -101,36 +84,42 @@ _GbcPrepareVBlank:
 	pop af
 	reti
 
-SECTION "JpPoint", ROM0[$1dde]
+; Prevent data shifting
+SECTION "JpPoint", ROM0
 
-JpPoint:
-	jp _RefreshWindowInitial	; HAX
+; HAX: This function is reimplemented elsewhere.
+; Note: this doesn't update "H_LOADEDROMBANK", but no interrupts will occur at this time,
+; so it's fine.
+TransferBgRows::
+	ld a,BANK(WindowTransferBgRowsAndColors)
+	ld [MBC1RomBank],a
+	jp WindowTransferBgRowsAndColors
 
 ; Copies [H_VBCOPYBGNUMROWS] rows from H_VBCOPYBGSRC to H_VBCOPYBGDEST.
 ; If H_VBCOPYBGSRC is XX00, the transfer is disabled.
 VBlankCopyBgMap::
-	ld a,[H_VBCOPYBGSRC] ; doubles as enabling byte
+	ld a, [H_VBCOPYBGSRC] ; doubles as enabling byte
 	and a
 	ret z
-	ld hl,[sp + 0]
-	ld a,h
-	ld [H_SPTEMP],a
-	ld a,l
-	ld [H_SPTEMP + 1],a ; save stack pointer
-	ld a,[H_VBCOPYBGSRC]
-	ld l,a
-	ld a,[H_VBCOPYBGSRC + 1]
-	ld h,a
-	ld sp,hl
-	ld a,[H_VBCOPYBGDEST]
-	ld l,a
-	ld a,[H_VBCOPYBGDEST + 1]
-	ld h,a
-	ld a,[H_VBCOPYBGNUMROWS]
-	ld b,a
+	ld hl, sp + 0
+	ld a, h
+	ld [H_SPTEMP], a
+	ld a, l
+	ld [H_SPTEMP + 1], a ; save stack pointer
+	ld a, [H_VBCOPYBGSRC]
+	ld l, a
+	ld a, [H_VBCOPYBGSRC + 1]
+	ld h, a
+	ld sp, hl
+	ld a, [H_VBCOPYBGDEST]
+	ld l, a
+	ld a, [H_VBCOPYBGDEST + 1]
+	ld h, a
+	ld a, [H_VBCOPYBGNUMROWS]
+	ld b, a
 	xor a
-	ld [H_VBCOPYBGSRC],a ; disable transfer so it doesn't continue next V-blank
-	jr JpPoint	; HAX
+	ld [H_VBCOPYBGSRC], a ; disable transfer so it doesn't continue next V-blank
+	jr TransferBgRows
 
 
 VBlankCopyDouble::
@@ -145,7 +134,7 @@ VBlankCopyDouble::
 	and a
 	ret z
 
-	ld hl, [sp + 0]
+	ld hl, sp + 0
 	ld a, h
 	ld [H_SPTEMP], a
 	ld a, l
@@ -197,7 +186,7 @@ VBlankCopyDouble::
 	ld a, h
 	ld [H_VBCOPYDOUBLEDEST + 1], a
 
-	ld hl, [sp + 0]
+	ld hl, sp + 0
 	ld a, l
 	ld [H_VBCOPYDOUBLESRC], a
 	ld a, h
@@ -223,7 +212,7 @@ VBlankCopy::
 	and a
 	ret z
 
-	ld hl, [sp + 0]
+	ld hl, sp + 0
 	ld a, h
 	ld [H_SPTEMP], a
 	ld a, l
@@ -267,7 +256,7 @@ VBlankCopy::
 	ld a, h
 	ld [H_VBCOPYDEST + 1], a
 
-	ld hl, [sp + 0]
+	ld hl, sp + 0
 	ld a, l
 	ld [H_VBCOPYSRC], a
 	ld a, h
@@ -303,23 +292,27 @@ UpdateMovingBgTiles::
 	ld hl, vTileset + $14 * $10
 	ld c, $10
 
-	; HAX
-	ld a,BANK(label_2c_l000)
-	ld [MBC1RomBank],a
-
 	ld a, [wMovingBGTilesCounter2]
 	inc a
 	and 7
 	ld [wMovingBGTilesCounter2], a
 
 	and 4
-	; HAX
-	jp nz,label_2c_l000
-	jp label_2c_l002
-
-	ld a,[H_LOADEDROMBANK]
-	ld [MBC1RomBank],a
-
+	jr nz, .left
+.right
+	ld a, [hl]
+	rrca
+	ld [hli], a
+	dec c
+	jr nz, .right
+	jr .done
+.left
+	ld a, [hl]
+	rlca
+	ld [hli], a
+	dec c
+	jr nz, .left
+.done
 	ld a, [hTilesetType]
 	rrca
 	ret nc

@@ -1,11 +1,8 @@
-SECTION "bank1C_extension",ROMX,BANK[$1C]
+; Extending bank 1C, same bank as engine/palettes.asm (for "SetPal" functions)
+SECTION "bank1C_extension",ROMX
 
 ; Set all palettes to black at beginning of battle
 SetPal_BattleBlack:
-	; Code $ff sometimes calls this (by accident?)
-	inc b
-	ret z
-
 	ld a,$02
 	ld [rSVBK],a
 
@@ -23,30 +20,93 @@ SetPal_BattleBlack:
 	inc a
 	jr nz,.palLoop
 
-	; This prevents extra flickering when entering battle
-	xor a
-	ld [rBGP],a
-	ld [rOBP0],a
-	ld [rOBP1],a
+	ld a,1
+	ld [W2_ForceBGPUpdate],a
+	ld [W2_ForceOBPUpdate],a
 
-	;xor a
+	xor a
 	ld [rSVBK],a
 	ret
 
-; Set proper palettes for pokemon/trainers
+
+; This is almost identical to SetPal_Battle, but it's specifically called after the player
+; and enemy scroll in, not at other times. The only difference is the timing of when it
+; requests a palette update.
+SetPal_BattleAfterBlack:
+	call SetPal_Battle_Common
+
+	; Wait 3 frames (if LCD is on) to allow tilemap updates to apply. Prevents garbage
+	; from appearing on player/enemy silhouettes.
+	ld a,[rLCDC]
+	and rLCDC_ENABLE_MASK
+	jr z,.doneDelay
+	ld c,3
+	call DelayFrames
+.doneDelay
+
+	; Update palettes (AFTER frame delay, so the tilemap is updated after player/enemy
+	; scroll in)
+	ld a,2
+	ld [rSVBK],a
+	ld a,1
+	ld [W2_ForceBGPUpdate],a
+	ld [W2_ForceOBPUpdate],a
+	ld [rSVBK],a
+	ret
+
+; Set proper palettes for pokemon/trainers. Called a lot during battle, like when the
+; active pokemon changes.
 SetPal_Battle:
+	call SetPal_Battle_Common
+
+	; Update palettes (BEFORE frame delay, so lifebars get updated snappily)
+	ld a,2
+	ld [rSVBK],a
+	ld a,1
+	ld [W2_ForceBGPUpdate],a
+	ld [W2_ForceOBPUpdate],a
+	ld [rSVBK],a
+
+	; Wait 3 frames (if LCD is on) to allow tilemap updates to apply. Prevents garbage
+	; from appearing after closing pokemon menu.
+	ld a,[rLCDC]
+	and rLCDC_ENABLE_MASK
+	jr z,.doneDelay
+	ld c,3
+	call DelayFrames
+.doneDelay
+	ret
+
+SetPal_Battle_Common:
  	ld a, [wPlayerBattleStatus3]
-	ld hl, wBattleMonSpecies        ; player Pokemon ID
+	bit TRANSFORMED,a
+	jr z,.getBattleMonPal
+
+	; If transformed, don't trust the "DetermineBackSpritePaletteID" function.
+	ld a,$02
+	ld [rSVBK],a
+	ld a,[W2_BattleMonPalette]
+	ld b,a
+	xor a
+	ld [rSVBK],a
+	jr .getEnemyMonPal
+
+.getBattleMonPal
+	ld a, [wBattleMonSpecies]        ; player Pokemon ID
 	call DetermineBackSpritePaletteID
 	ld b, a
 
-	ld a, [wEnemyBattleStatus3]
-	ld hl, wEnemyMonSpecies2         ; enemy Pokemon ID
+.getEnemyMonPal
+	ld a, [wEnemyMonSpecies2]         ; enemy Pokemon ID (without transform effect?)
 	call DeterminePaletteID
 	ld c, a
 
 	ld a,$02
 	ld [rSVBK],a
+
+	; Save the player mon's palette in case it transforms later
+	ld a,b
+	ld [W2_BattleMonPalette],a
 
 	; Player palette
 	push bc
@@ -86,11 +146,6 @@ ENDC
 
 
 	; Now set the tilemap
-
-	xor a
-	ld [W2_TileBasedPalettes],a	; Use a direct color map instead of assigning colors to tiles
-	ld a,3
-	ld [W2_StaticPaletteChanged],a
 
 	; Top half; enemy lifebar
 	ld hl,W2_TilesetPaletteMap
@@ -145,21 +200,17 @@ ENDC
 	ld c,20
 	call FillBox
 
-	; Wait 2 frames before updating palettes
-	ld c,2
-	call DelayFrames
+	xor a
+	ld [W2_TileBasedPalettes],a	; Use a direct color map instead of assigning colors to tiles
+	ld a,3
+	ld [W2_StaticPaletteMapChanged],a
 
-	; Restore sprite palettes which may have been set to black
-	CALL_INDIRECT LoadSpritePalettes
-
-	ld a,1
-	ld [W2_UseOBP1],a
-	ld [W2_LastBGP],a
-	ld [W2_LastOBP0],a	; Palettes must be redrawn
+	xor a
 	ld [rSVBK],a
 
-	;ld a,$01
-	ld [W_PALREFRESHCMD],a
+	ld a,SET_PAL_BATTLE
+	ld [wDefaultPaletteCommand],a
+
 	ret
 
 ; hl: starting address
@@ -222,7 +273,7 @@ SetPal_StatusScreen:
 	jr c, .pokemon
 	ld a, $1 ; not pokemon
 .pokemon
-	call DeterminePaletteIDOutOfBattle ; DeterminePaletteID without status check
+	call DeterminePaletteID
 	ld b,a
 
 	ld a,2
@@ -254,7 +305,7 @@ ENDC
 	xor a
 	ld [W2_TileBasedPalettes],a
 	ld a,3
-	ld [W2_StaticPaletteChanged],a
+	ld [W2_StaticPaletteMapChanged],a
 
 	; Set everything to the lifebar palette
 	ld hl,W2_TilesetPaletteMap
@@ -292,7 +343,7 @@ IF GEN_2_GRAPHICS
 	ld [hli], a
 	dec b
 	jr nz, .expLoop
-ENDC	
+ENDC
 
 	xor a
 	ld [rSVBK],a
@@ -301,7 +352,7 @@ ENDC
 ; Show pokedex data
 SetPal_Pokedex:
 	ld a, [wcf91]
-	call DeterminePaletteIDOutOfBattle	; Call DeterminePaletteID without status check
+	call DeterminePaletteID
 	ld d,a
 	ld e,0
 
@@ -346,7 +397,7 @@ ENDC
 	CALL_INDIRECT ClearSpritePaletteMap
 
 	ld a,3
-	ld [W2_StaticPaletteChanged],a
+	ld [W2_StaticPaletteMapChanged],a
 	xor a
 	ld [W2_TileBasedPalettes],a
 
@@ -382,7 +433,7 @@ SetPal_Slots:
 	call FarCopyData
 
 	ld a,3
-	ld [W2_StaticPaletteChanged],a
+	ld [W2_StaticPaletteMapChanged],a
 
 	xor a
 	ld [W2_TileBasedPalettes],a
@@ -407,7 +458,7 @@ SetPal_Slots:
 ; Titlescreen with cycling pokemon
 SetPal_TitleScreen:
 	ld a,[wWhichTrade] ; Get the pokemon on the screen
-	call DeterminePaletteIDOutOfBattle
+	call DeterminePaletteID
 	ld d,a
 	ld e,0
 
@@ -436,6 +487,8 @@ ENDC
 	ld e,0
 	callba LoadSGBPalette_Sprite
 
+	; Start drawing the palette map
+
 	; Pokemon logo
 	ld hl,W2_TilesetPaletteMap
 	ld a,1
@@ -454,25 +507,47 @@ ENDC
 	ld a,2
 	call FillMemory
 
+	; Set the text at the bottom to grey
 	ld hl, W2_TilesetPaletteMap + 17*20
 	ld bc, 20
 	ld a,3
 	call FillMemory
 
 	ld a,3
-	ld [W2_StaticPaletteChanged],a
+	ld [W2_StaticPaletteMapChanged],a
  	xor a
 	ld [W2_TileBasedPalettes],a
 
 	ld a,1
-	ld [W2_LastBGP],a	; Palettes must be redrawn
+	ld [W2_ForceBGPUpdate],a	; Palettes must be redrawn
 
 	;ld a,1
 	ld [rSVBK],a
 
+	; This fixes the text at the bottom being the wrong color for a second or so.
+	; It's a real hack, but the game's using two vram maps at once, and the color code
+	; will only update one of them.
+	; I'm not sure why this didn't used to be a problem...
+	di
+	ld a,1
+	ld [rVBK],a
+.vblankWait
+	ld a,[rLY]
+	cp $90
+	jr nz,.vblankWait
+
+	ld hl, $9c00 + 9*32
+	ld bc,20
+	ld a,3
+	call FillMemory
+
+	xor a
+	ld [rVBK],a
+	ei
+
 	; Execute custom command 0e after titlescreen to clear colors.
-	ld a,$e
-	ld [W_PALREFRESHCMD],a
+	ld a,SET_PAL_OAK_INTRO
+	ld [wDefaultPaletteCommand],a
 	ret
 
 ; Called during the intro
@@ -493,15 +568,14 @@ ENDC
 	callba LoadSGBPalette
 
 	ld a,1
-	ld [W2_LastOBP0],a
-	ld [W2_LastBGP],a	; Palettes must be redrawn
+	ld [W2_ForceOBPUpdate],a
+	ld [W2_ForceBGPUpdate],a	; Palettes must be redrawn
 
 	xor a
 	ld [rSVBK],a
 	ret
 
-; used mostly for menus and the Oak intro
-; Pokedex screen
+; used mostly for menus and the Oak intro, pokedex screen
 SetPal_Generic:
 	ld a,2
 	ld [rSVBK],a
@@ -520,32 +594,28 @@ SetPal_Generic:
 	call FillMemory
 
 	ld a,3
-	ld [W2_StaticPaletteChanged],a
+	ld [W2_StaticPaletteMapChanged],a
 	xor a
 	ld [W2_TileBasedPalettes],a
 
 	ld a,1
-	ld [W2_LastBGP],a
+	ld [W2_ForceBGPUpdate],a
 
 	;xor a
 	ld [rSVBK],a
 	ret
 
-; uses PalPacket_Empty to build a packet based on the current map
-; Loading a map
+; Loading a map. Called when first loading, and when transitioning between maps.
 SetPal_Overworld:
 	ld a,2
 	ld [rSVBK],a
 	dec a ; ld a,1
 	ld [W2_TileBasedPalettes],a
 
+	; Clear sprite palette map, except for exclamation marks above people's heads
 	CALL_INDIRECT ClearSpritePaletteMap
-
-	ld a,1
-	ld [W2_UseOBP1],a ; Pokecenter uses OBP1 when healing pokemons
-
-	CALL_INDIRECT LoadSpritePalettes
-	; Make exclamation mark bubble black & white
+	; Make exclamation mark bubble black & white. (Note: it's possible that other
+	; sprites may use these tiles for different purposes...)
 	ld a, 5
 	ld hl, W2_SpritePaletteMap + $f8
 	ld [hli],a
@@ -553,28 +623,38 @@ SetPal_Overworld:
 	ld [hli],a
 	ld [hli],a
 
+	; Pokecenter uses OBP1 when healing pokemons; also cut animation
+	ld a,1
+	ld [W2_UseOBP1],a
+
+	CALL_INDIRECT LoadOverworldSpritePalettes
+
 	xor a
 	ld [rSVBK],a
 
 	CALL_INDIRECT LoadTilesetPalette
 
-	; Wait 2 frames before updating palettes
+	; Wait 2 frames before updating palettes (if LCD is on)
+	ld a,[rLCDC]
+	and rLCDC_ENABLE_MASK
+	jr z,.doneDelay
 	ld c,2
 	call DelayFrames
+.doneDelay:
 
 	ld a,2
 	ld [rSVBK],a
 
 	; Signal to refresh palettes
 	ld a,1
-	ld [W2_LastBGP],a
-	ld [W2_LastOBP0],a
+	ld [W2_ForceBGPUpdate],a
+	ld [W2_ForceOBPUpdate],a
 
-	;xor a
+	xor a
 	ld [rSVBK],a
 
-	ld a,9
-	ld [W_PALREFRESHCMD],a
+	ld a,SET_PAL_OVERWORLD
+	ld [wDefaultPaletteCommand],a
 	ret
 
 ; Open pokemon menu
@@ -582,7 +662,7 @@ SetPal_PartyMenu:
 	ld a,2
 	ld [rSVBK],a
 
-	CALL_INDIRECT LoadSpritePalettes
+	CALL_INDIRECT LoadOverworldSpritePalettes
 
 	ld d,PAL_GREENBAR	; Filler for palette 0 (technically, green)
 	ld e,0
@@ -597,13 +677,13 @@ SetPal_PartyMenu:
 	ld e,3
 	callba LoadSGBPalette
 
-	; Palettes were written to a SGB packet. Extract them.
-	ld b,9		; there are only 6 pokemon but iterate 9 times to fill the whole screen
-	ld hl,wPartyMenuBlkPacket + 9
+	ld b,9 ; there are only 6 pokemon but iterate 9 times to fill the whole screen
+	ld hl,wPartyMenuHPBarColors
 	ld de,W2_TilesetPaletteMap
 .loop
-	ld a,[hl]
+	ld a,[hli]
 	and 3
+	inc a
 
 	ld c,40
 .loop2
@@ -612,20 +692,15 @@ SetPal_PartyMenu:
 	dec c
 	jr nz,.loop2
 
-	ld a,6
-	add l
-	ld l,a
 	dec b
 	jr nz,.loop
 
 	CALL_INDIRECT ClearSpritePaletteMap
 
 	ld a,3
-	ld [W2_StaticPaletteChanged],a
+	ld [W2_StaticPaletteMapChanged],a
 	xor a
 	ld [W2_TileBasedPalettes],a
-
-	;xor a
 	ld [rSVBK],a
 	ret
 
@@ -633,6 +708,11 @@ SetPal_PartyMenu:
 ; used when a Pokemon is the only thing on the screen
 ; such as evolution, trading and the Hall of Fame
 ; Evolution / Hall of Fame
+;
+; Takes parameter 'c' from 0-2.
+; 0: calculate palette based on loaded pokemon
+; 1: make palettes black
+; 2: previously used during trades, now unused.
 SetPal_PokemonWholeScreen:
 	ld a, c
 	dec a
@@ -644,7 +724,7 @@ SetPal_PokemonWholeScreen:
 	jr z, .loadPalette
 	ld a, [wWholeScreenPaletteMonSpecies]
 	; Use the "BackSprite" version for the player sprite in the hall of fame.
-	call DetermineBackSpritePaletteID_NoStatusCheck
+	call DetermineBackSpritePaletteID
 
 .loadPalette
 	ld d,a
@@ -689,9 +769,9 @@ SetPal_PokemonWholeScreen:
 	call FillMemory
 
 	inc a ; ld a,1
-	ld [W2_LastBGP],a ; Refresh palettes
+	ld [W2_ForceBGPUpdate],a ; Refresh palettes
 	ld a,3
-	ld [W2_StaticPaletteChanged],a
+	ld [W2_StaticPaletteMapChanged],a
 
 	xor a
 	ld [rSVBK],a
@@ -703,28 +783,47 @@ SetPal_GameFreakIntro:
 	ld a,$02
 	ld [rSVBK],a
 
-	; Load default palettes
-	ld hl,MapPalettes
+	; Load "INTRO_GRAY" palette from map_palettes.asm
+	ld hl, MapPalettes + INTRO_GRAY*4
 	ld a, BANK(MapPalettes)
 	ld de,W2_BgPaletteData
 	ld bc, $08
 	call FarCopyData
 
+	; Palette 0 used by logo; palettes 4-7 used by sparkles
 	ld d, PAL_GAMEFREAK
 	ld e,0
 	callba LoadSGBPalette_Sprite
 
 	ld d, PAL_REDMON
-	ld e,1
-	callba LoadSGBPalette_Sprite
-
-	ld d, PAL_VIRIDIAN
-	ld e,2
+	ld e,4
 	callba LoadSGBPalette_Sprite
 
 	ld d, PAL_BLUEMON
-	ld e,3
+	ld e,5
 	callba LoadSGBPalette_Sprite
+
+	ld d, PAL_GAMEFREAK
+	ld e,6
+	callba LoadSGBPalette_Sprite
+
+	ld d, PAL_VIRIDIAN ; PAL_GREENMON
+	ld e,7
+	callba LoadSGBPalette_Sprite
+
+	; Set the star to use palette 6
+	ld a, 6
+	ld hl, W2_SpritePaletteMap+$a0
+	ld [hli], a
+	ld [hli], a
+	; Set the sparkles underneath the logo to all use different palettes (4-7)
+	ld [hl], 10
+
+	; Everything else will use palette 0 by default
+
+	; Use OBP1 just for the shooting star
+	ld a, 1
+	ld [W2_UseOBP1], a
 
 	xor a
 	ld [rSVBK],a
@@ -747,13 +846,23 @@ SetPal_TrainerCard:
 	ld d,PAL_YELLOWMON
 	ld e,3
 	callba LoadSGBPalette
+
 	; Red's palette
-	IF GEN_2_GRAPHICS
-		ld d, PAL_HERO
-	ELSE
-		ld d, PAL_REDMON
-	ENDC
+IF GEN_2_GRAPHICS
+	ld d, PAL_HERO
+ELSE
+	ld d, PAL_REDMON
+ENDC
 	ld e,4
+	callba LoadSGBPalette
+
+	; Palette for border tiles
+IF DEF(_BLUE)
+	ld d, PAL_BLUEMON
+ELSE ; _RED
+	ld d, PAL_REDMON
+ENDC
+	ld e,5
 	callba LoadSGBPalette
 
 	; Load palette map
@@ -762,11 +871,11 @@ SetPal_TrainerCard:
 	ld de, W2_TilesetPaletteMap
 	ld bc, $60
 	call FarCopyData
-	; Zero the rest
+	; Set everything else to be red or blue (depending on game)
 	push de
 	pop hl
 	ld bc, $a0
-	xor a
+	ld a,5
 	call FillMemory
 
 
@@ -775,20 +884,15 @@ SetPal_TrainerCard:
 	call DelayFrames
 
 	ld a,1
-	ld [W2_LastBGP],a ; Signal to update palettes
+	ld [W2_ForceBGPUpdate],a ; Signal to update palettes
 	ld [rSVBK],a
 	ret
 
 
 ; Clear colors after titlescreen
-PalCmd_0e:
+SetPal_OakIntro:
 	ld a,2
 	ld [rSVBK],a
-
-	xor a
-	ld [W2_TileBasedPalettes],a
-	ld a,3
-	ld [W2_StaticPaletteChanged],a
 
 	ld bc,20*18
 	ld hl,W2_TilesetPaletteMap
@@ -802,16 +906,21 @@ PalCmd_0e:
 	jr nz,.palLoop
 
 	xor a
+	ld [W2_TileBasedPalettes],a
+	ld a,3
+	ld [W2_StaticPaletteMapChanged],a
+
+	xor a
 	ld [rSVBK],a
 	ret
 
 ; Name entry
 ; Deals with sprites for the pokemon naming screen
-PalCmd_0f:
+SetPal_NameEntry:
 	ld a,2
 	ld [rSVBK],a
 
-	CALL_INDIRECT LoadSpritePalettes
+	CALL_INDIRECT LoadOverworldSpritePalettes
 
 	CALL_INDIRECT ClearSpritePaletteMap
 
@@ -827,28 +936,27 @@ LoadTitleMonTilesAndPalettes:
 	ld b,SET_PAL_TITLE_SCREEN
 	call RunPaletteCommand
 	pop de
-	callba TitleScroll
+	callba TitleScroll ; removed from caller to make space for hook
 	ret
 
-ResetPalettes:
-	ld a,2
-	ld [rSVBK],a
-	dec a
-	ld [W2_TileBasedPalettes],a
-	dec a
-	ld hl, W2_TilesetPaletteMap
-	ld bc, SCREEN_WIDTH * SCREEN_HEIGHT
-	call FillMemory
-	ld hl, W2_BgPaletteData
-	ld bc, $80
-	call FillMemory
-	xor a
-	ld [rSVBK],a
-	ret
 
+; Everything else goes in bank $2C (unused by original game)
+SECTION "bank2C",ROMX
+
+INCLUDE "color/init.asm"
 INCLUDE "color/refreshmaps.asm"
 INCLUDE "color/loadpalettes.asm"
+
 INCLUDE "color/vblank.asm"
 INCLUDE "color/sprites.asm"
-INCLUDE "color/badgepalettemap.asm" ; This ends up in whatever bank was used last
+INCLUDE "color/ssanne.asm"
+INCLUDE "color/boulder.asm"
 INCLUDE "color/super_palettes.asm"
+
+INCLUDE "color/data/badgepalettemap.asm"
+
+INCLUDE "color/dmg.asm"
+
+; Copy of sound engine used by dmg-mode to play jingle
+SECTION "bank31",ROMX
+INCBIN "color/data/bank31.bin",$0000,$c8000-$c4000

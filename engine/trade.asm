@@ -46,7 +46,7 @@ TradeAnimCommon:
 	ld l, a
 	ld de, .loop
 	push de
-	jp [hl] ; call trade func, which will return to the top of the loop
+	jp hl ; call trade func, which will return to the top of the loop
 .done
 	pop af
 	ld [hSCX], a
@@ -70,7 +70,7 @@ tradefunc: MACRO
 ; Trade_SwapNames to swap the player and enemy names for some functions.
 
 InternalClockTradeFuncSequence:
-	tradefunc LoadTradingGFXAndMonNames
+	tradefunc LoadTradingGFXAndMonNames_ColorHook
 	tradefunc Trade_ShowPlayerMon
 	tradefunc Trade_DrawOpenEndOfLinkCable
 	tradefunc Trade_AnimateBallEnteringLinkCable
@@ -89,7 +89,7 @@ InternalClockTradeFuncSequence:
 	db $FF
 
 ExternalClockTradeFuncSequence:
-	tradefunc LoadTradingGFXAndMonNames
+	tradefunc LoadTradingGFXAndMonNames_ColorHook
 	tradefunc Trade_ShowClearedWindow
 	tradefunc PrintTradeWillTradeText
 	tradefunc PrintTradeFarewellText
@@ -113,7 +113,7 @@ ExternalClockTradeFuncSequence:
 	db $FF
 
 TradeFuncPointerTable:
-	addtradefunc LoadTradingGFXAndMonNames
+	addtradefunc LoadTradingGFXAndMonNames_ColorHook
 	addtradefunc Trade_ShowPlayerMon
 	addtradefunc Trade_DrawOpenEndOfLinkCable
 	addtradefunc Trade_AnimateBallEnteringLinkCable
@@ -179,7 +179,7 @@ LoadTradingGFXAndMonNames:
 	and a
 	ld a, $e4 ; non-SGB OBP0
 	jr z, .next
-	ld a, $f0 ; SGB OBP0
+	ld a, $e4 ; SGB OBP0
 .next
 	ld [rOBP0], a
 	call EnableLCD
@@ -225,7 +225,7 @@ Trade_Cleanup:
 Trade_ShowPlayerMon:
 	ld b, SET_PAL_POKEMON_WHOLE_SCREEN
 	ld c, 2
-	call RunPaletteCommand
+	call Trade_LoadCablePalettes ; Ignores values of b, c
 	ld a, %10101011
 	ld [rLCDC], a
 	ld a, $50
@@ -268,14 +268,14 @@ Trade_ShowPlayerMon:
 	ret
 
 Trade_DrawOpenEndOfLinkCable:
-	ld a, %11110000
+	ld a, %11100100
 	ld [rOBP0], a
 	call Trade_ClearTileMap
 	ld b, vBGMap0 / $100
 	call CopyScreenTileBufferToVRAM
 	ld b, SET_PAL_POKEMON_WHOLE_SCREEN
 	ld c, 2
-	call RunPaletteCommand
+	call Trade_LoadCablePalettes ; Ignores values of b, c
 
 ; This function call is pointless. It just copies blank tiles to VRAM that was
 ; already filled with blank tiles.
@@ -383,10 +383,10 @@ Trade_ShowEnemyMon:
 
 Trade_AnimLeftToRight:
 ; Animates the mon moving from the left GB to the right one.
-	call Trade_InitGameboyTransferGfx
+	call Trade_InitGameboyTransferGfx_ColorHook
 	ld a, $1
 	ld [wTradedMonMovingRight], a
-	ld a, %11010000
+	ld a, %11100100
 	ld [rOBP0], a
 	ld a, $54
 	ld [wBaseCoordX], a
@@ -417,7 +417,7 @@ Trade_AnimLeftToRight:
 
 Trade_AnimRightToLeft:
 ; Animates the mon moving from the right GB to the left one.
-	call Trade_InitGameboyTransferGfx
+	call Trade_InitGameboyTransferGfx_ColorHook
 	xor a
 	ld [wTradedMonMovingRight], a
 	ld a, $64

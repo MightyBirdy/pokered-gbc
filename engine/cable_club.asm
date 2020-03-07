@@ -13,7 +13,8 @@ CableClub_DoBattleOrTrade:
 	ld b, 2
 	ld c, 12
 	call CableClub_TextBoxBorder
-	coord hl, 4, 10
+	call CableClub_DoBattleOrTrade_ColorHook
+	;coord hl, 4, 10
 	ld de, PleaseWaitString
 	call PlaceString
 	ld hl, wPlayerNumHits
@@ -304,7 +305,7 @@ CallCurrentTradeCenterFunction:
 	ld a, [hli]
 	ld h, [hl]
 	ld l, a
-	jp [hl]
+	jp hl
 
 TradeCenter_SelectMon:
 	call ClearScreen
@@ -551,7 +552,7 @@ TradeCenter_SelectMon:
 	Coorda 1, 16
 .cancelMenuItem_JoypadLoop
 	call JoypadLowSensitivity
-	ld a, [$ffb5]
+	ld a, [hJoy5]
 	and a ; pressed anything?
 	jr z, .cancelMenuItem_JoypadLoop
 	bit 0, a ; A button pressed?
@@ -588,7 +589,7 @@ ReturnToCableClubRoom:
 	dec a
 	ld [wDestinationWarpID], a
 	call LoadMapData
-	callba ClearVariablesAfterLoadingMapData
+	callba ClearVariablesOnEnterMap
 	pop hl
 	pop af
 	ld [hl], a
@@ -630,7 +631,7 @@ TradeCenter_DisplayStats:
 	jp TradeCenter_DrawCancelBox
 
 TradeCenter_DrawPartyLists:
-	coord hl, 0, 0
+	call TradeCenter_DrawPartyLists_ColorHook
 	ld b, 6
 	ld c, 18
 	call CableClub_TextBoxBorder
@@ -914,7 +915,7 @@ CableClub_Run:
 	ld [wGrassRate], a
 	inc a ; LINK_STATE_IN_CABLE_CLUB
 	ld [wLinkState], a
-	ld [$ffb5], a
+	ld [hJoy5], a
 	ld a, 10
 	ld [wAudioFadeOutControl], a
 	ld a, BANK(Music_Celadon)
@@ -969,3 +970,9 @@ CableClub_DrawHorizontalLine:
 	dec d
 	jr nz, .loop
 	ret
+
+LoadTrainerInfoTextBoxTiles:
+	ld de, TrainerInfoTextBoxTileGraphics
+	ld hl, vChars2 + $760
+	lb bc, BANK(TrainerInfoTextBoxTileGraphics), (TrainerInfoTextBoxTileGraphicsEnd - TrainerInfoTextBoxTileGraphics) / $10
+	jp CopyVideoData

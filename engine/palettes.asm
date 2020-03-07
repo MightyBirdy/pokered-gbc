@@ -19,30 +19,25 @@ _RunPaletteCommand:
 	ld h, [hl]
 	ld l, a
 
-	;ld de, SetPalettesAndMaps ; $6156
-
-	ld de,PalCmdRet
+	ld de, SetPalRet
 	push de
+ 	jp hl
 
-	;di
- 	jp [hl]
-
-PalCmdRet:
-	;ei
+SetPalRet:
 	ret
 
 
 ; HAX: Custom functions squeezed in here
-; Before, PalCmd functions were here
+; Before, SetPal functions were here
 
 WaitForVBlank:
-	ld a,[rSTAT]
-	and a,3
+	ld a, [rSTAT]
+	and a, 3
 	dec a
-	jr nz,WaitForVBlank
+	jr nz, WaitForVBlank
  	ret
 
-; Palette commands are moved to the end of the bank
+; Palette commands are moved to the end of the bank (in color/color.asm)
 SetPalFunctions:
 	dw SetPal_BattleBlack
 	dw SetPal_Battle
@@ -59,16 +54,13 @@ SetPalFunctions:
 	dw SetPal_GameFreakIntro
 	dw SetPal_TrainerCard
 	; Past here are codes which didn't previously exist.
-	dw PalCmd_0e	; Set prof oak's color
-	dw PalCmd_0f	; Name entry (partially replaces 08)
+	dw SetPal_OakIntro	   ; Set prof oak's color
+	dw SetPal_NameEntry	   ; Name entry (partially replaces 08)
+	dw SetPal_BattleAfterBlack ; Like SetPal_Battle but specifically for clearing the black palettes
 
 ; HAXed to give trainers palettes independantly
+; Also skips the "transform" check, caller does that instead
 DeterminePaletteID:
-	bit Transformed, a ; a is battle status 3
-	ld a, PAL_GREYMON  ; if the mon has used Transform, use Ditto's palette
-	ret nz
-	ld a, [hl]
-DeterminePaletteIDOutOfBattle: ; DeterminePaletteID without status check
 	ld [wd11e], a
 	and a
 
@@ -79,15 +71,28 @@ DeterminePaletteIDOutOfBattle: ; DeterminePaletteID without status check
 	ld a, [wd11e]
 	ld hl, MonsterPalettes
 	and a
+	jr nz,.skipDexNumConversion ; Check if trainer?
 
 IF GEN_2_GRAPHICS ; Trainers are given individualized palettes
-	jr nz,.skipDexNumConversion ; Check if trainer?
+	; In link battle, don't rely in wTrainerClass (for some reason it's set to
+	; OPP_GARY, so ignore it)
+	ld a,[wLinkState]
+	cp LINK_STATE_BATTLING
+	ld a, PAL_HERO
+	ret z
+
 	ld a,[wTrainerClass] ; Get trainer ID
 	ld hl, TrainerPalettes
-ELSE ; Trainers are given a single palette (PAL_MEWMON)
-	REPT 8
-	nop
-	ENDR
+ELSE
+	; Trainers are given a single palette (PAL_MEWMON)
+	; However, check specifically for the player's sprite in linked battle
+	ld e,a
+	ld a,[wLinkState]
+	cp LINK_STATE_BATTLING
+	ld a, PAL_REDMON
+	ret z
+
+	ld a,e
 ENDC
 
 .skipDexNumConversion
@@ -98,12 +103,7 @@ ENDC
 	ret
 	
 
-DetermineBackSpritePaletteID: ; DeterminePaletteID with a special check for the player sprite
-	bit 3, a                 ; bit 3 of battle status 3 (unused?)
-	ld a, PAL_GREYMON
-	ret nz
-	ld a, [hl]
-DetermineBackSpritePaletteID_NoStatusCheck:
+DetermineBackSpritePaletteID:
 	ld [wd11e], a
 	and a
 
@@ -130,12 +130,7 @@ ENDC
 	ret
 
 
-	ORG $1c, $5f8f
-; each byte is the number of loops to make in .asm_71f5b for each badge
-LoopCounts_71f8f: ; 71f8f (1c:5f8f)
-	db $06,$06,$06,$12,$06,$06,$06,$06
-
-	ORG $1c, $5fb6
+SECTION "InitPartyMenuBlkPacket",ROMX
 
 InitPartyMenuBlkPacket:
 	ld hl, BlkPacket_PartyMenu
@@ -173,11 +168,11 @@ UpdatePartyMenuBlkPacket:
 
 SendSGBPacket:
 ;check number of packets
-	ld a,[hl]
-	and a,$07
+	ld a, [hl]
+	and $07
 	ret z
 ; store number of packets in B
-	ld b,a
+	ld b, a
 .loop2
 ; save B for later use
 	push bc
@@ -186,46 +181,46 @@ SendSGBPacket:
 	ld [hDisableJoypadPolling], a
 ; send RESET signal (P14=LOW, P15=LOW)
 	xor a
-	ld [rJOYP],a
+	ld [rJOYP], a
 ; set P14=HIGH, P15=HIGH
-	ld a,$30
-	ld [rJOYP],a
+	ld a, $30
+	ld [rJOYP], a
 ;load length of packets (16 bytes)
-	ld b,$10
+	ld b, $10
 .nextByte
 ;set bit counter (8 bits per byte)
-	ld e,$08
+	ld e, $08
 ; get next byte in the packet
-	ld a,[hli]
-	ld d,a
+	ld a, [hli]
+	ld d, a
 .nextBit0
-	bit 0,d
+	bit 0, d
 ; if 0th bit is not zero set P14=HIGH,P15=LOW (send bit 1)
-	ld a,$10
-	jr nz,.next0
+	ld a, $10
+	jr nz, .next0
 ; else (if 0th bit is zero) set P14=LOW,P15=HIGH (send bit 0)
-	ld a,$20
+	ld a, $20
 .next0
-	ld [rJOYP],a
+	ld [rJOYP], a
 ; must set P14=HIGH,P15=HIGH between each "pulse"
-	ld a,$30
-	ld [rJOYP],a
+	ld a, $30
+	ld [rJOYP], a
 ; rotation will put next bit in 0th position (so  we can always use command
 ; "bit 0,d" to fetch the bit that has to be sent)
 	rr d
 ; decrease bit counter so we know when we have sent all 8 bits of current byte
 	dec e
-	jr nz,.nextBit0
+	jr nz, .nextBit0
 	dec b
-	jr nz,.nextByte
+	jr nz, .nextByte
 ; send bit 1 as a "stop bit" (end of parameter data)
-	ld a,$20
-	ld [rJOYP],a
+	ld a, $20
+	ld [rJOYP], a
 ; set P14=HIGH,P15=HIGH
-	ld a,$30
-	ld [rJOYP],a
+	ld a, $30
+	ld [rJOYP], a
 	xor a
-	ld [hDisableJoypadPolling],a
+	ld [hDisableJoypadPolling], a
 ; wait for about 70000 cycles
 	call Wait7000
 ; restore (previously pushed) number of packets
@@ -255,7 +250,7 @@ LoadSGB:
 	ret
 	; Deleted the end of this function which loads the SGB border and stuff
 
-	ORG $1c, $6075
+SECTION "PrepareSuperNintendoVRAMTransfer",ROMX
 
 PrepareSuperNintendoVRAMTransfer:
 	ld hl, .packetPointers
@@ -395,9 +390,7 @@ Wait7000:
 	jr nz, .loop
 	ret
 
-; de = ptr to ATTR_BLK packet
-; hl = ptr to PAL_SET packet
-SetPalettesAndMaps:
+SendSGBPackets:
 	ld a, [wGBC]
 	and a
 	jr z, .notGBC
@@ -473,4 +466,5 @@ INCLUDE "data/sgb_packets.asm"
 
 INCLUDE "data/mon_palettes.asm"
 
-INCLUDE "data/sgb_border.asm"
+; SGB border not needed in color hack
+;INCLUDE "data/sgb_border.asm"

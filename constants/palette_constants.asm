@@ -1,3 +1,10 @@
+; monochrome palette color ids
+	const_def
+	const WHITE
+	const LIGHT_GRAY
+	const DARK_GRAY
+	const BLACK
+
 SET_PAL_BATTLE_BLACK         EQU $00
 SET_PAL_BATTLE               EQU $01
 SET_PAL_TOWN_MAP             EQU $02
@@ -14,6 +21,7 @@ SET_PAL_GAME_FREAK_INTRO     EQU $0C
 SET_PAL_TRAINER_CARD         EQU $0D
 SET_PAL_OAK_INTRO            EQU $0E
 SET_PAL_NAMING_SCREEN        EQU $0F
+SET_PAL_BATTLE_AFTER_BLACK   EQU $10
 UPDATE_PARTY_MENU_BLK_PACKET EQU $FC
 
 ; super game boy palettes

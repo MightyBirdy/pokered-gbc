@@ -76,7 +76,7 @@ HealEffect_:
 	ld a, [de]
 	sbc [hl]
 	jr c, .playAnim
-; copy max HP to current HP if an overflow ocurred
+; copy max HP to current HP if an overflow occurred
 	ld a, [hli]
 	ld [de], a
 	ld [wHPBarNewHP+1], a
@@ -96,7 +96,7 @@ HealEffect_:
 	xor a
 .updateHPBar
 	ld [wHPBarType], a
-	predef UpdateHPBar_Hook
+	predef UpdateHPBar2
 	ld hl, DrawHUDsAndHPBars
 	call BankswitchEtoF
 	ld hl, RegainedHealthText

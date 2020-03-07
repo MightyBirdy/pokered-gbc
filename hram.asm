@@ -98,7 +98,7 @@ hSwapTemp EQU $FF95
 
 hExperience EQU $FF96 ; 3 bytes, big endian
 
-; Multiplcation and division variables are meant
+; Multiplication and division variables are meant
 ; to overlap for back-to-back usage. Big endian.
 
 H_MULTIPLICAND EQU $FF96 ; 3 bytes
@@ -155,6 +155,7 @@ hCoins EQU $FFA0 ; 2-byte BCD number
 
 hDivideBCDDivisor  EQU $FFA2 ; 3-byte BCD number
 hDivideBCDQuotient EQU $FFA2 ; 3-byte BCD number
+hDivideBCDBuffer   EQU $FFA5 ; 3-byte BCD number
 
 hSerialReceivedNewData EQU $FFA9
 
@@ -321,3 +322,10 @@ hDisableJoypadPolling EQU $FFF9
 
 hJoyInput EQU $FFF8
 
+; This byte is used by the color hack, in the "DelayFrameHook" function. It stores the
+; bank that the interrupt wrapper should switch to if an interrupt occurs in the middle of
+; "DelayFrameHook". The bank # is incremented by one, so if this is 0, it's ignored.
+hDelayFrameHookBank EQU $FFFA
+
+; Used for convenience in color hack (in the _ColorOverworldSprite function)
+hColorHackTmp EQU $FFFB

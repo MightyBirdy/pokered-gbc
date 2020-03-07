@@ -1,44 +1,8 @@
-SECTION "bank2D",ROMX,BANK[$2D]
+INCLUDE "color/data/map_palettes.asm"
+INCLUDE "color/data/map_palette_sets.asm"
+INCLUDE "color/data/map_palette_assignments.asm"
+INCLUDE "color/data/roofpalettes.asm"
 
-MapPalettes:
-	INCLUDE "color/mappalettes.asm"
-
-	ORG $2d, $4200
-; 8 bytes per map for 8 palettes, which are taken from MapPalettes.
-MapPaletteSets:
-	INCBIN "color/mappalettesets.bin"
-
-	ORG $2d, $4300
-; $60 bytes for each map. Each byte is the palette number for a tile.
-; Remaining $a0 tiles aren't part of the tileset and are set to zero.
-MapPaletteAssignments:
-	INCBIN "color/mappaletteassignments.bin"
-
-
-InitGbcMode: ; Sets double speed & clears extra memory
-	ld a,$01
-	; Set double speed mode
-	ld [$ff4d],a
-	stop
-
-	; Clear memory
-	ld d,7
-.clearBank
-	ld a,d
-	ld [rSVBK],a
-	xor a
-	ld hl, W2_BgPaletteData
-	ld bc, $1000
-	call FillMemory
-	dec d
-	jr nz,.clearBank
-
-	xor a
-	ld [rSVBK],a
-	jp LoadBank1
-
-
-	ORG $2d, $6000
 ; Load colors for new map and tile placement
 LoadTilesetPalette:
 	push bc
@@ -48,7 +12,7 @@ LoadTilesetPalette:
 	ld d,a
 	xor a
 	ld [rSVBK],a
-	ld a,[wCurMapTileset] ; Located in wram bank 0
+	ld a,[wCurMapTileset] ; Located in wram bank 1
 	ld b,a
 	ld a,$02
 	ld [rSVBK],a
@@ -59,11 +23,15 @@ LoadTilesetPalette:
 
 	ld a,b ; Get wCurMapTileset
 	push af
+	ld d,0
 	ld e,a
 	sla e
 	sla e
 	sla e
-	ld d, MapPaletteSets>>8	; de points to map palette indices
+	ld hl, MapPaletteSets
+	add hl,de
+	ld d,h
+	ld e,l
 	ld hl,W2_BgPaletteData ; palette data to be copied to wram at hl
 	ld b,$08
 .nextPalette
@@ -120,19 +88,52 @@ LoadTilesetPalette:
 	dec b
 	jr nz,.copyLoop
 
-	; Set the remaining values to zero
+	; Set the remaining values to 7 for text
 	ld b,$a0
-	xor a
+	ld a,7
 .fillLoop
 	ld [hli],a
 	dec b
 	jr nz,.fillLoop
 
-	; Exception:
-	; Tile $78, which is either a pokeball, or an unused japanese character.
-	ld a, 3
-	ld [W2_TilesetPaletteMap + $78], a
+	; There used to be special-case code for tile $78 here (pokeball in pc), but now
+	; it uses palette 7 as well. Those areas still need to load the variant of the
+	; textbox palette (PC_POKEBALL_PAL).
 
+	; Switch to wram bank 1 just to read wCurMap
+	xor a
+	ld [rSVBK],a
+	ld a,[wCurMap]
+	ld b,a
+	ld a,2
+	ld [rSVBK],a
+
+	; Check for celadon mart roof (make the "outside" blue)
+	ld a,b
+	cp CELADON_MART_ROOF
+	jr nz,.notCeladonRoof
+	ld a,PAL_BG_WATER
+	ld hl,W2_TilesetPaletteMap + $4b
+	ld [hli],a
+	ld [hli],a
+	ld [hli],a
+	ld [hli],a
+	ld [hli],a
+.notCeladonRoof
+	; Check for celadon 1st floor (change bench color from blue to yellow)
+	ld a,b
+	cp CELADON_MART_1F
+	jr nz,.notCeladon1st
+	ld hl,W2_TilesetPaletteMap + $07
+	ld a,PAL_BG_YELLOW
+	ld [hli],a
+	ld [hli],a
+	ld l,$17
+	ld [hli],a
+	ld [hli],a
+.notCeladon1st
+
+	; Retrieve former wram bank
 	pop af
 	ld b,a
 
@@ -155,7 +156,6 @@ LoadTilesetPalette:
 	pop bc
 	ret
 
-	ORG $2d, $6200
 ; Towns have different roof colors while using the same tileset
 LoadTownPalette:
 	ld a,[rSVBK]
@@ -163,7 +163,17 @@ LoadTownPalette:
 	xor a
 	ld [rSVBK],a
 
-	ld a, [wCurMap]
+	; Get the current map.
+	ld a,[wCurMap]
+	ld c,a
+	cp ROUTE_6 ; Route 6 has 2 rows in saffron city; check if player is there or not.
+	jr nz, .notRoute6
+	ld a,[wYCoord]
+	cp 2
+	jr nc, .notRoute6
+	ld c,SAFFRON_CITY
+.notRoute6
+	ld a,c
 	add a
 	ld c,a
 
@@ -196,7 +206,3 @@ LoadTownPalette:
 	pop af
 	ld [rSVBK],a ; Restore wram bank
 	ret
-
-
-	ORG $2d, $7000
-	INCLUDE "color/roofpalettes.asm"

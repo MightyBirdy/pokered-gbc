@@ -1,72 +1,67 @@
-; Bank 2c is being used for something at the beginning of the bank. The rest is free.
+; Most of the functions here are called during vblank, maybe they belong in vblank.asm...
 
-	ORG $2c, $6000
 
-; Call this when a map is loaded.
-RefreshMapColors:
+; Called when a map is loaded. Loads tilemap and tile attributes.
+; LCD is disabled, so we have free reign over vram.
+LoadMapVramAndColors:
 	ld a,$02
 	ld [rSVBK],a
+
+	coord hl, 0, 0
+	ld de,vBGMap0
+	ld b,18
+.vramCopyLoop
+	ld c,20
+.vramCopyInnerLoop
 	ld a,$01
 	ld [rVBK],a
 	ld a,[hl]
 	push hl
-	ld h,$d2
+	ld h,W2_TilesetPaletteMap>>8
 	ld l,a
 	ld a,[hl]
 	ld [de],a
 	pop hl
 	xor a
 	ld [rVBK],a
-	ld [rSVBK],a
 	ld a,[hli]
-	add sp,$04
-	push af
-	add sp,-$02
 	ld [de],a
 	inc e
+
+	dec c
+	jr nz,.vramCopyInnerLoop
+	ld a,32 - 20
+	add e
+	ld e,a
+	jr nc,.noCarry
+	inc d
+.noCarry
+	dec b
+	jr nz,.vramCopyLoop
+
+	xor a
+	ld [rSVBK],a
 	ret
 
-; Refresh moving tiles
-	ORG $2c, $7000
-label_2c_l000:
-	push hl
-	ld hl,rSTAT
-label_2c_l001:
-	bit 1,[hl]
-	jr nz,label_2c_l001
-	pop hl
-	ld a,[hl]
-	rlca
-	ld [hli],a
-	dec c
-	jr nz,label_2c_l000
-	jp $1ee9
-
-	ORG $2c, $7080
-label_2c_l002:
-	push hl
-	ld hl,rSTAT
-label_2c_l003:
-	bit 1,[hl]
-	jr nz,label_2c_l003
-	pop hl
-	ld a,[hl]
-	rrca
-	ld [hli],a
-	dec c
-	jr nz,label_2c_l002
-	jp $1ee9
-
-SECTION "bank2F",ROMX,BANK[$2F]
 
 
-; Refresh 1/3 of the window each frame
+; Refresh 1/3 of the window each frame. Called during vblank.
 RefreshWindow:
 	ld a,[H_AUTOBGTRANSFERENABLED]
 	and a
 	ret z
 
-	ld hl,[sp + 0]
+	ld a,2
+	ld [rSVBK],a
+
+	; Check that the pre-vblank functions have run already (if not, let it catch up)
+	ld hl,W2_UpdatedWindowPortion
+	ld a,[hl]
+	and a
+	jp z,.palettesDone
+	ld [hl],0
+
+	ld hl,sp + 0
 	ld a,h
 	ld [H_SPTEMP],a
 	ld a,l
@@ -141,9 +136,9 @@ ENDR
 	ld b,h
 	ld c,l
 
-	ld a,[$ffbf]
+	ld a,[H_SPTEMP]
 	ld h,a
-	ld a,[$ffc0]
+	ld a,[H_SPTEMP+1]
 	ld l,a
 	ld sp,hl
 
@@ -152,25 +147,26 @@ ENDR
 	ld bc, -$c0
 	add hl,bc
 
-; BEGIN loading palettes
+; BEGIN loading palette maps
 
 	ld a,1
 	ld [rVBK],a
-	inc a
-	ld [rSVBK],a
 
+	; Always update if using tile-based palettes
 	ld a,[W2_TileBasedPalettes]
 	and a
 	jr nz,.continue
 
-	ld a,[W2_StaticPaletteModified]
+	; If using static palettes, we can check whether that's been updated
+	ld a,[W2_StaticPaletteMapChanged_vbl]
 	and a
 	jr z, .palettesDone
 	xor a
-	ld [W2_StaticPaletteModified],a
+	ld [W2_StaticPaletteMapChanged_vbl],a
 
 .continue
 
+	; DMA from W2_ScreenPalettesBuffer to hl (window attribute map)
 	ld c,$51
 	ld a, W2_ScreenPalettesBuffer>>8
 	ld [$ff00+c],a
@@ -195,125 +191,92 @@ ENDR
 	ret
 
 
-; Not sure why this is needed
-RefreshWindowInitial:
-label_011:
+; Replaces the "TransferBgRows" function. Called when menus first appear on top of bg
+; layer. (called 3 times to fully draw it)
+; b = # rows to copy
+; hl = destination
+; sp = source (need to restore sp after this)
+WindowTransferBgRowsAndColors:
+	; Store # of rows to ocpy
 	ld a,$02
 	ld [rSVBK],a
-	ld c,$0a
-label_012:
+	ld a,b
+	ld [W2_VBCOPYBGNUMROWS],a
+	xor a
+	ld [rSVBK],a
+
+.nextRow
+	ld c,l
+; Copy tilemap
+rept 20 / 2 - 1
 	pop de
-label_013:
-	ld a,[rSTAT]
-	bit 1,a
-	jr nz,label_013
 	ld [hl],e
 	inc l
 	ld [hl],d
 	inc l
-	dec c
-	jr nz,label_012
-	ld c,$14
-label_014:
-	dec l
-	dec c
-	jr nz,label_014
-	add sp,-$14
+endr
+	pop de
+	ld [hl],e
+	inc l
+	ld [hl],d
+
+	; Go back to start of row to do palettes
+	ld l,c
+	add sp,-20
 	ld a,$01
-	ld [$ff4f],a
-	ld c,$0a
-label_015:
-	pop de
-	ld d,$d2
-label_016:
-	ld a,[$ff41]
-	bit 1,a
-	jr nz,label_016
+	ld [rVBK],a
+	ld a,$02
+	ld [rSVBK],a
+
+	ld d, W2_TilesetPaletteMap>>8
+rept 20 / 2
+	pop bc
+	ld e,c
 	ld a,[de]
-	ldi [hl],a
-	add sp,-$02
-	pop de
-	ld e,d
-	ld d,$d2
-label_017:
-	ld a,[$ff41]
-	bit 1,a
-	jr nz,label_017
+	ld [hli],a
+	ld e,b
 	ld a,[de]
-	ldi [hl],a
-	dec c
-	jr nz,label_015
-	xor a
-	ld [$ff4f],a
-	ld [$ff70],a
+	ld [hli],a
+endr
+
+	; Advance through "unused" tiles
 	ld a,$0c
 	add l
 	ld l,a
-	jr nc,label_018
+	jr nc,.noCarry
 	inc h
-label_018:
-	dec b
-	jr nz,label_011
-	ld a,[$ffbf]
+.noCarry
+	ld a,[W2_VBCOPYBGNUMROWS]
+	dec a
+	ld [W2_VBCOPYBGNUMROWS],a
+
+	ld a,$00 ; Don't xor so we don't change the flags
+	ld [rVBK],a
+	ld [rSVBK],a
+
+	; Jump if W2_VBCOPYBGNUMROWS is nonzero
+	jp nz,.nextRow
+
+	ld a,[H_SPTEMP]
 	ld h,a
-	ld a,[$ffc0]
+	ld a,[H_SPTEMP+1]
 	ld l,a
 	ld sp,hl
-	ret
+
+	; Restore ROM bank (we obviously can't do that here, so jump to bank 0)
+	ld a,[H_LOADEDROMBANK]
+	jp SetRomBank
 
 
-	ORG $2f, $6000
-; Refresh map when scrolling
-; I don't think this is ever called anymore?
-
-	ld a,$02
-	ld [rSVBK],a
-	ld a,$01
-	ld [rVBK],a
-	ld a,[hl]
-	push hl
-	ld h,$d2
-	ld l,a
-	ld a,[hl]
-
-	ld [de],a
-	pop hl
-	xor a
-	ld [$ff4f],a
-	ld a,[hli]
-
-	ld [de],a
-	inc de
-	ld a,$01
-	ld [$ff4f],a
-	ld a,[hl]
-	push hl
-	ld h,$d2
-	ld l,a
-	ld a,[hl]
-	ld hl,$ff41
-label_021:
-	bit 1,[hl]
-	jr nz,label_021
-	ld [de],a
-	pop hl
-	xor a
-	ld [rVBK],a
-	ld [rSVBK],a
-	ld a,[hli]
-	add sp,$04
-	push af
-	add sp,-$02
-	push hl
-	ld hl,$ff41
-label_022:
-	bit 1,[hl]
-	jr nz,label_022
-	pop hl
-	ret
-
+; Called when scrolling the screen vertically (at vblank)
 DrawMapRow:
-	ld hl,wRedrawRowOrColumnSrcTiles
+	ld a,2
+	ld [rSVBK],a
+
+	ld a,1
+	ld [W2_DrewRowOrColumn],a
+
+	ld hl,wRedrawRowOrColumnSrcTiles ; This is wram bank 0
 	ld a,[hRedrawRowOrColumnDest]
 	ld e,a
 	ld a,[hRedrawRowOrColumnDest + 1]
@@ -327,8 +290,6 @@ DrawMapRow:
 	call .drawHalf ; draw lower half
 
 	; Start drawing palettes
-	ld a,2
-	ld [rSVBK],a
 	ld a,1
 	ld [rVBK],a
 	ld hl,wRedrawRowOrColumnSrcTiles
@@ -372,7 +333,7 @@ DrawMapRow:
 	ret
 
 .drawHalfPalette
-	ld b, $d2
+	ld b, W2_TilesetPaletteMap>>8
 REPT 10
 	ld a,[hli]
 	ld c,a
@@ -396,7 +357,14 @@ ENDR
 	ret
 
 
+; Called when scrolling the screen horizontally (at vblank)
 DrawMapColumn:
+	ld a,2
+	ld [rSVBK],a
+
+	ld a,1
+	ld [W2_DrewRowOrColumn],a
+
 	; Draw tiles
 	ld hl,wRedrawRowOrColumnSrcTiles
 	ld a,[hRedrawRowOrColumnDest]
@@ -413,7 +381,7 @@ DrawMapColumn:
 	ld a,31
 	add e
 	ld e,a
-jr nc,.noCarry
+	jr nc,.noCarry
 	inc d
 .noCarry
 ; the following 4 lines wrap us from bottom to top if necessary
@@ -426,8 +394,6 @@ jr nc,.noCarry
 
 ; =======================
 	; Draw palettes
-	ld a,2
-	ld [rSVBK],a
 	ld a,1
 	ld [rVBK],a
 
@@ -436,7 +402,7 @@ jr nc,.noCarry
 	ld e,a
 	ld a,[hRedrawRowOrColumnDest + 1]
 	ld d,a
-	ld b,$d2
+	ld b, W2_TilesetPaletteMap>>8
 REPT 18
 	ld a,[hli]
 	ld c,a
@@ -450,7 +416,7 @@ REPT 18
 	ld a,31
 	add e
 	ld e,a
-jr nc,.noCarry\@
+	jr nc,.noCarry\@
 	inc d
 .noCarry\@
 ; the following 4 lines wrap us from bottom to top if necessary
